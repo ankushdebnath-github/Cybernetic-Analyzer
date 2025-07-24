@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cybernetic Password Analyzer v11</title>
+    <title>Cybernetic Password Analyzer v13</title>
     <style>
         /* --- Root Variables for Theming --- */
         :root {
@@ -386,8 +386,8 @@
             <div class="input-area">
                 <input type="email" id="check-email-input" class="input-field" placeholder="[email to check...]">
             </div>
-            <button id="check-email-btn" class="action-btn" disabled>Check Email</button>
-            <p id="email-feedback-text">Connecting to database...</p>
+            <button id="check-email-btn" class="action-btn">Check Email</button>
+            <p id="email-feedback-text">Local database ready.</p>
             
             <div class="results-area">
                 <h2>Breach Creator & Manager</h2>
@@ -398,7 +398,7 @@
                     <label for="breach-count-input">Breaches to generate:</label>
                     <input type="number" id="breach-count-input" class="input-field" value="3" min="1" max="10">
                 </div>
-                <button id="add-email-btn" class="action-btn" disabled>Add Email to Database</button>
+                <button id="add-email-btn" class="action-btn">Add Email to Database</button>
                 <div id="breached-email-list">
                     <p>Loading breached emails...</p>
                 </div>
@@ -467,12 +467,7 @@
         </div>
     </div>
 
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, where, getDocs, setLogLevel, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
+    <script>
         // --- DOM Element References ---
         const passwordInput = document.getElementById('password-input');
         const timeDisplay = document.getElementById('time-display');
@@ -535,67 +530,29 @@
 
         const commonPasswords = new Set(["password","123456","123456789","qwerty","12345","12345678","111111","123123","dragon","iloveyou","admin","root","welcome"]);
 
-        // --- Firebase Setup ---
-        let db, auth, userId;
-        let breachedEmailsCol;
-        
-        async function setupFirebase() {
-            try {
-                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                setLogLevel('debug');
+        // --- LocalStorage Setup ---
+        const DB_KEY = 'cyberAnalyzerBreachedEmails';
+        let breachedEmails = [];
 
-                await enableIndexedDbPersistence(db);
-                console.log("Firebase persistence enabled.");
+        function loadDatabase() {
+            const data = localStorage.getItem(DB_KEY);
+            breachedEmails = data ? JSON.parse(data) : [];
+            displayBreachedEmails();
+        }
 
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                userId = auth.currentUser.uid;
-                console.log("Authenticated with User ID:", userId);
-
-                const collectionPath = `artifacts/${appId}/users/${userId}/breached_emails_v4`;
-                breachedEmailsCol = collection(db, collectionPath);
-                
-                onSnapshot(breachedEmailsCol, (snapshot) => {
-                    displayBreachedEmails(snapshot.docs);
-                });
-                
-                addEmailBtn.disabled = false;
-                checkEmailBtn.disabled = false;
-                emailFeedbackText.textContent = "Database connected. Ready for use.";
-
-            } catch (error) {
-                if (error.code == 'failed-precondition') {
-                    console.warn("Persistence failed, likely due to multiple tabs. App will work online only.");
-                    emailFeedbackText.textContent = "Offline mode disabled (multiple tabs open).";
-                } else if (error.code == 'unimplemented') {
-                    console.warn("Persistence not available in this browser. App will work online only.");
-                    emailFeedbackText.textContent = "Offline mode not supported by browser.";
-                } else {
-                    console.error("Firebase Initialization Error:", error);
-                    breachedEmailList.innerHTML = `<p style="color:var(--weak-glow);">Error: Could not connect to the database.</p>`;
-                    emailFeedbackText.textContent = "Database connection failed.";
-                }
-            }
+        function saveDatabase() {
+            localStorage.setItem(DB_KEY, JSON.stringify(breachedEmails));
+            displayBreachedEmails();
         }
         
         // --- Email Database Logic ---
-        function displayBreachedEmails(docs) {
-            if (!docs || docs.length === 0) {
+        function displayBreachedEmails() {
+            if (breachedEmails.length === 0) {
                 breachedEmailList.innerHTML = '<p>No emails in the breach list.</p>';
                 return;
             }
             breachedEmailList.innerHTML = '';
-            docs.forEach(doc => {
-                const emailData = doc.data();
+            breachedEmails.forEach((emailData, index) => {
                 const item = document.createElement('div');
                 item.className = 'breached-email-item';
                 item.innerHTML = `<span>${emailData.email}</span>`;
@@ -604,14 +561,14 @@
                 deleteBtn.className = 'delete-email-btn';
                 deleteBtn.textContent = 'X';
                 deleteBtn.title = `Delete ${emailData.email}`;
-                deleteBtn.onclick = () => confirmDeleteEmail(doc.id, emailData.email);
+                deleteBtn.onclick = () => confirmDeleteEmail(index, emailData.email);
                 
                 item.appendChild(deleteBtn);
                 breachedEmailList.appendChild(item);
             });
         }
 
-        async function addEmail() {
+        function addEmail() {
             const email = addEmailInput.value.trim().toLowerCase();
             const breachCount = parseInt(breachCountInput.value, 10);
             if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
@@ -620,18 +577,14 @@
             if (isNaN(breachCount) || breachCount < 1) {
                 emailFeedbackText.textContent = "Please enter a valid number of breaches."; return;
             }
-
-            addEmailBtn.disabled = true;
-            try {
-                const breaches = generateFakeBreaches(breachCount);
-                await addDoc(breachedEmailsCol, { email: email, breaches: breaches });
-                addEmailInput.value = '';
-            } catch (error) {
-                console.error("Error adding email:", error);
-                emailFeedbackText.textContent = "Failed to add email to the database.";
-            } finally {
-                addEmailBtn.disabled = false;
+            if (breachedEmails.some(item => item.email === email)) {
+                emailFeedbackText.textContent = "This email is already in the database."; return;
             }
+
+            const breaches = generateFakeBreaches(breachCount);
+            breachedEmails.push({ email, breaches });
+            saveDatabase();
+            addEmailInput.value = '';
         }
         
         function generateFakeBreaches(count) {
@@ -649,47 +602,32 @@
             return generatedBreaches;
         }
 
-        function confirmDeleteEmail(docId, email) {
+        function confirmDeleteEmail(index, email) {
             confirmModal.style.display = 'flex';
             document.getElementById('confirm-modal-body').innerHTML = `<p>Are you sure you want to delete <strong>${email}</strong> from the database?</p>`;
             
-            confirmBtnYes.onclick = async () => {
-                try {
-                    await deleteDoc(doc(db, breachedEmailsCol.path, docId));
-                } catch (error) {
-                    console.error("Error deleting email:", error);
-                    emailFeedbackText.textContent = "Failed to delete email.";
-                } finally {
-                    confirmModal.style.display = 'none';
-                }
+            confirmBtnYes.onclick = () => {
+                breachedEmails.splice(index, 1);
+                saveDatabase();
+                confirmModal.style.display = 'none';
             };
         }
 
-        async function checkEmail() {
+        function checkEmail() {
             const emailToCheck = checkEmailInput.value.trim().toLowerCase();
             if (!emailToCheck) {
                 emailFeedbackText.textContent = "Please enter an email to check.";
                 return;
             }
-            checkEmailBtn.disabled = true;
-            emailFeedbackText.textContent = `Checking for ${emailToCheck}...`;
-            try {
-                const q = query(breachedEmailsCol, where("email", "==", emailToCheck));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    const doc = querySnapshot.docs[0];
-                    const breachData = doc.data();
-                    showAlertModal(breachData.email, breachData.breaches);
-                    emailFeedbackText.textContent = `Check complete. See alert for details.`;
-                } else {
-                    emailFeedbackText.style.color = 'var(--strong-glow)';
-                    emailFeedbackText.textContent = `Good news! ${emailToCheck} is not in your breach list.`;
-                }
-            } catch (error) {
-                console.error("Error checking email:", error);
-                emailFeedbackText.textContent = "Error checking the database.";
-            } finally {
-                checkEmailBtn.disabled = false;
+            
+            const foundBreach = breachedEmails.find(item => item.email === emailToCheck);
+
+            if (foundBreach) {
+                showAlertModal(foundBreach.email, foundBreach.breaches);
+                emailFeedbackText.textContent = `Check complete. See alert for details.`;
+            } else {
+                emailFeedbackText.style.color = 'var(--strong-glow)';
+                emailFeedbackText.textContent = `Good news! ${emailToCheck} is not in your breach list.`;
             }
         }
         
@@ -870,12 +808,6 @@
             }
             return false;
         }
-        async function sha1(str) {
-            const buffer = new TextEncoder("utf-8").encode(str);
-            const hashBuffer = await crypto.subtle.digest("SHA-1", buffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        }
         function switchGeneratorMode(mode) {
             if (mode === 'random') {
                 randomModeBtn.classList.add('active');
@@ -986,7 +918,7 @@
         window.addEventListener('resize', startMatrix);
         
         // --- Initial call ---
-        setupFirebase();
+        loadDatabase();
         resetUI();
         startMatrix();
     </script>
