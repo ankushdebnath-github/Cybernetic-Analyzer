@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cybernetic Password Analyzer v12 (Firebase Fixed)</title>
+    <title>Cybernetic Password Analyzer v12 (Sync & Delete Fixed)</title>
     <style>
         /* --- Root Variables for Theming --- */
         :root {
@@ -537,8 +537,9 @@
         const commonPasswords = new Set(["password","123456","123456789","qwerty","12345","12345678","111111","123123","dragon","iloveyou","admin","root","welcome"]);
 
         // --- Firebase Setup ---
-        let db, auth, userId;
+        let db, auth;
         let breachedEmailsCol;
+        let docIdToDelete = null; // Variable to hold the ID for the delete confirmation
         
         async function setupFirebase() {
             try {
@@ -552,6 +553,7 @@
                   appId: "1:558912632062:web:736d7e292d52c20f89e1af",
                   measurementId: "G-NXYQG9C4D0"
                 };
+                const appId = firebaseConfig.projectId; // Use your project ID for the path
 
                 const app = initializeApp(firebaseConfig);
                 const analytics = getAnalytics(app);
@@ -563,11 +565,10 @@
                 console.log("Firebase persistence enabled.");
 
                 await signInAnonymously(auth);
+                console.log("Authenticated anonymously.");
 
-                userId = auth.currentUser.uid;
-                console.log("Authenticated with User ID:", userId);
-
-                const collectionPath = `users/${userId}/breached_emails_v5`;
+                // FIX: Use a public path for data to sync across devices
+                const collectionPath = `artifacts/${appId}/public/data/breached_emails`;
                 breachedEmailsCol = collection(db, collectionPath);
                 
                 onSnapshot(breachedEmailsCol, (snapshot) => {
@@ -655,19 +656,22 @@
         }
 
         function confirmDeleteEmail(docId, email) {
+            docIdToDelete = docId; // Store the ID to be deleted
             confirmModal.style.display = 'flex';
             document.getElementById('confirm-modal-body').innerHTML = `<p>Are you sure you want to delete <strong>${email}</strong> from the database?</p>`;
-            
-            confirmBtnYes.onclick = async () => {
-                try {
-                    await deleteDoc(doc(db, breachedEmailsCol.path, docId));
-                } catch (error) {
-                    console.error("Error deleting email:", error);
-                    emailFeedbackText.textContent = "Failed to delete email.";
-                } finally {
-                    confirmModal.style.display = 'none';
-                }
-            };
+        }
+        
+        async function executeDelete() {
+            if (!docIdToDelete) return;
+            try {
+                await deleteDoc(doc(db, breachedEmailsCol.path, docIdToDelete));
+            } catch (error) {
+                console.error("Error deleting email:", error);
+                emailFeedbackText.textContent = "Failed to delete email.";
+            } finally {
+                docIdToDelete = null; // Clear the ID after the operation
+                confirmModal.style.display = 'none';
+            }
         }
 
         async function checkEmail() {
@@ -733,6 +737,7 @@
         closeModalBtn.addEventListener('click', () => { generatorModal.style.display = 'none'; });
         closeAlertBtn.addEventListener('click', () => { alertModal.style.display = 'none'; });
         confirmBtnNo.addEventListener('click', () => { confirmModal.style.display = 'none'; });
+        confirmBtnYes.addEventListener('click', executeDelete); // Single, stable listener
         window.addEventListener('click', (e) => { 
             if (e.target === generatorModal) generatorModal.style.display = 'none';
             if (e.target === alertModal) alertModal.style.display = 'none';
