@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cybernetic Password Analyzer v12</title>
+    <style>
+        /* --- Root Variables for Theming --- */
+        :root {
+            --bg-color: #0d0c1d;
+            --primary-glow: #00f0ff;
+            --secondary-glow: #ff00ff;
+            --strong-glow: #00ff8a;
+            --weak-glow: #ff4d4d;
+            --text-color: #e0e0e0;
+            --font-family: 'Roboto Mono', monospace, sans-serif;
+        }
+
+        /* --- Base Styles & Animations --- */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+
+        @keyframes background-pulse { 0% { background-color: #0d0c1d; } 50% { background-color: #1a183d; } 100% { background-color: #0d0c1d; } }
+        @keyframes text-flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        @keyframes scanlines { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
+        @keyframes modal-fade-in { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top for scrolling */
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+            overflow-y: auto; /* Allow vertical scrolling */
+        }
+        
+        #matrix-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            transition: filter 0.5s ease-in-out;
+        }
+
+        /* --- Main Analyzer Container --- */
+        .analyzer-container {
+            width: 100%;
+            max-width: 600px;
+            background: rgba(10, 10, 30, 0.8);
+            border: 2px solid var(--primary-glow);
+            border-radius: 15px;
+            box-shadow: 0 0 15px var(--primary-glow), 0 0 30px var(--primary-glow) inset;
+            backdrop-filter: blur(8px);
+            text-align: center;
+            transition: border-color 0.5s ease, box-shadow 0.5s ease;
+            position: relative;
+            z-index: 1;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .analyzer-container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            z-index: 2;
+            pointer-events: none;
+            animation: scanlines 0.2s infinite linear;
+            border-radius: 15px;
+        }
+
+        .analyzer-container h1 {
+            color: var(--primary-glow);
+            text-shadow: 0 0 5px var(--primary-glow);
+            margin: 1.5rem 0;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-size: clamp(1.5rem, 5vw, 2rem);
+        }
+        
+        /* --- Tab Navigation --- */
+        .app-tabs {
+            display: flex;
+            border-bottom: 2px solid var(--primary-glow);
+            margin-bottom: 1.5rem;
+        }
+        .app-tab {
+            flex: 1;
+            padding: 15px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-family: var(--font-family);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            opacity: 0.6;
+        }
+        .app-tab.active {
+            background: var(--primary-glow);
+            color: var(--bg-color);
+            opacity: 1;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 0 1.5rem 2rem;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        .tab-content h2 {
+            color: var(--secondary-glow);
+            text-align: left;
+            margin-top: 0;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--secondary-glow);
+            padding-bottom: 0.5rem;
+        }
+
+        /* --- Input Area --- */
+        .input-area {
+            position: relative;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+        }
+        .input-field {
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--text-color);
+            border-radius: 0;
+            color: var(--primary-glow);
+            padding: 15px 10px;
+            font-size: 1.2rem;
+            font-family: var(--font-family);
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            caret-color: var(--strong-glow);
+        }
+        .input-field:focus { outline: none; border-bottom-color: var(--secondary-glow); }
+        .input-field::placeholder { color: rgba(224, 224, 224, 0.5); }
+        
+        .password-controls {
+            display: flex;
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .control-btn {
+            background: none; border: none; cursor: pointer; padding: 5px;
+            margin-left: 5px; color: var(--text-color); opacity: 0.7;
+            transition: opacity 0.3s, color 0.3s;
+        }
+        .control-btn:hover { opacity: 1; color: var(--primary-glow); }
+        .control-btn:disabled { cursor: not-allowed; opacity: 0.3; }
+        .control-btn svg { width: 24px; height: 24px; pointer-events: none; }
+        #copy-btn { display: none; }
+
+        /* --- Results Area --- */
+        .results-area { margin-top: 2rem; }
+        .time-to-crack {
+            background: rgba(0,0,0,0.3); border-radius: 10px; padding: 1.5rem;
+            margin-bottom: 1rem; border: 1px solid transparent; transition: all 0.5s ease;
+        }
+        .time-to-crack p { margin: 0 0 10px 0; font-size: 0.9rem; letter-spacing: 1px; text-transform: uppercase; }
+        #time-display {
+            font-size: clamp(1.5rem, 5vw, 2.5rem); font-weight: 700;
+            color: var(--primary-glow); text-shadow: 0 0 8px var(--primary-glow);
+            transition: all 0.5s ease; animation: text-flicker 3s infinite; word-wrap: break-word;
+        }
+        #feedback-text, #email-feedback-text { min-height: 20px; font-size: 0.85rem; color: var(--text-color); margin-bottom: 1rem; transition: color 0.5s ease; }
+
+        /* --- Visual Entropy Meter --- */
+        #entropy-meter {
+            margin-bottom: 1.5rem;
+        }
+        #entropy-core {
+            transition: all 0.5s ease;
+        }
+        #entropy-fill {
+            transition: all 0.5s ease;
+            stroke-dasharray: 283; /* Circumference of circle with r=45 */
+            stroke-dashoffset: 283;
+            transform-origin: 50% 50%;
+            transform: rotate(-90deg);
+        }
+
+        /* --- Checklist --- */
+        #checklist { list-style: none; padding: 0; margin: 0; text-align: left; }
+        #checklist li {
+            padding: 10px 15px 10px 40px; margin-bottom: 8px; border-radius: 5px;
+            background: rgba(255, 255, 255, 0.05); transition: all 0.4s ease-in-out; position: relative;
+        }
+        #checklist li::before {
+            content: '▱'; position: absolute; left: 15px; top: 50%;
+            transform: translateY(-50%); font-size: 1.2rem; color: var(--weak-glow);
+            transition: all 0.4s ease-in-out;
+        }
+        #checklist li.checked { color: var(--strong-glow); background: rgba(0, 255, 138, 0.1); }
+        #checklist li.checked::before { content: '✓'; color: var(--strong-glow); text-shadow: 0 0 5px var(--strong-glow); }
+        
+        /* --- Email Breach Database Specifics --- */
+        .breach-manager-controls { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem; align-items: stretch; }
+        .breach-manager-controls div { display: flex; align-items: center; justify-content: space-between; }
+        .breach-manager-controls input[type="number"] { width: 80px; text-align: center; }
+        #breached-email-list {
+            text-align: left;
+            margin-top: 1.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        .breached-email-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .breached-email-item:last-child { border-bottom: none; }
+        .delete-email-btn {
+            background: var(--weak-glow);
+            color: var(--bg-color);
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        /* --- Modal Styles (Shared) --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px);
+            display: none; justify-content: center; align-items: center;
+            z-index: 1000; animation: modal-fade-in 0.3s ease;
+        }
+        .modal-content {
+            background: var(--bg-color); padding: 1.5rem; border-radius: 15px;
+            width: 90%; max-width: 500px; position: relative; text-align: left;
+        }
+        .modal-content h2 { margin-top: 0; text-align: center; }
+        .close-btn {
+            position: absolute; top: 15px; right: 20px; background: none; border: none;
+            color: var(--text-color); font-size: 2rem; cursor: pointer; opacity: 0.7;
+        }
+        .close-btn:hover { opacity: 1; color: var(--secondary-glow); }
+        
+        /* --- Generator Modal --- */
+        #generator-modal .modal-content { border: 2px solid var(--secondary-glow); box-shadow: 0 0 20px var(--secondary-glow); }
+        #generator-modal h2 { color: var(--secondary-glow); }
+        .option { margin-bottom: 1.5rem; display: flex; flex-direction: column; }
+        .option label { margin-bottom: 0.5rem; }
+        .option input[type="range"] { width: 100%; }
+        .option input[type="checkbox"] { margin-right: 10px; }
+        .action-btn {
+            background: var(--secondary-glow); color: var(--bg-color); font-family: var(--font-family);
+            border: none; border-radius: 5px; padding: 12px 20px; width: 100%;
+            font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: all 0.3s ease;
+        }
+        .action-btn:hover { box-shadow: 0 0 15px var(--secondary-glow); }
+        .action-btn:disabled { background: #555; cursor: not-allowed; box-shadow: none; }
+        .generator-toggle { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+        .toggle-btn {
+            padding: 8px 15px; background: rgba(255,255,255,0.1); border: 1px solid var(--text-color);
+            color: var(--text-color); cursor: pointer;
+        }
+        .toggle-btn:first-child { border-radius: 5px 0 0 5px; }
+        .toggle-btn:last-child { border-radius: 0 5px 5px 0; }
+        .toggle-btn.active { background: var(--secondary-glow); color: var(--bg-color); border-color: var(--secondary-glow); }
+        
+        /* --- Alert & Confirm Modals --- */
+        #alert-modal .modal-content, #confirm-modal .modal-content { border: 2px solid var(--weak-glow); box-shadow: 0 0 20px var(--weak-glow); }
+        #alert-modal h2, #confirm-modal h2 { color: var(--weak-glow); }
+        #alert-modal-body, #confirm-modal-body { max-height: 250px; overflow-y: auto; padding-right: 10px; margin-bottom: 1.5rem; }
+        #alert-modal .breach-item {
+            background: rgba(255, 77, 77, 0.1);
+            border-left: 3px solid var(--weak-glow);
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        #alert-modal .breach-item .data-type { color: var(--primary-glow); }
+        .modal-actions { display: flex; gap: 1rem; justify-content: flex-end; }
+        .modal-btn { padding: 10px 20px; border-radius: 5px; border: none; cursor: pointer; font-family: var(--font-family); font-weight: bold; }
+        #confirm-btn-yes { background: var(--weak-glow); color: var(--bg-color); }
+        #confirm-btn-no { background: #555; color: var(--text-color); }
+        
+        /* --- Responsive Design --- */
+        @media (max-width: 640px) {
+            body {
+                padding: 0.5rem;
+                align-items: flex-start;
+            }
+            .analyzer-container {
+                margin-top: 1rem;
+                margin-bottom: 1rem;
+            }
+            .tab-content {
+                padding: 0 1rem 1.5rem;
+            }
+            .app-tab {
+                font-size: 0.85rem;
+                padding: 12px 5px;
+            }
+            .password-controls {
+                transform: translateY(-50%) scale(0.9);
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix-bg"></canvas>
+
+    <div class="analyzer-container" id="analyzer-core">
+        <h1>Cybernetic Analyzer</h1>
+        <div class="app-tabs">
+            <button class="app-tab active" data-tab="password-analyzer">Password Analyzer</button>
+            <button class="app-tab" data-tab="email-scanner">Breach Center</button>
+        </div>
+
+        <!-- Password Analyzer Tab -->
+        <div id="password-analyzer" class="tab-content active">
+            <div class="input-area">
+                <input type="password" id="password-input" class="input-field" placeholder="[analyze password...]" autocomplete="off">
+                <div class="password-controls">
+                    <button class="control-btn" id="generate-btn" title="Generate Password">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8zm-7-2h2v-2H8v2zm4 0h2v-2h-2v2z"/></svg>
+                    </button>
+                    <button class="control-btn" id="toggle-visibility-btn" title="Toggle Visibility">
+                        <svg id="eye-open" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                        <svg id="eye-closed" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>
+                    </button>
+                    <button class="control-btn" id="copy-btn" title="Copy Password">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="results-area">
+                <div class="time-to-crack" id="time-container">
+                    <p>Est. Time to Crack</p>
+                    <span id="time-display">---</span>
+                </div>
+                <div id="entropy-meter">
+                    <svg viewbox="0 0 100 100" width="100" height="100" style="display: block; margin: auto;">
+                        <circle id="entropy-core" cx="50" cy="50" r="45" stroke="var(--primary-glow)" stroke-width="5" fill="none" opacity="0.2"></circle>
+                        <circle id="entropy-fill" cx="50" cy="50" r="45" stroke="var(--strong-glow)" stroke-width="5" fill="none" stroke-linecap="round"></circle>
+                    </svg>
+                </div>
+                <p id="feedback-text">Awaiting input...</p>
+                <ul id="checklist">
+                    <li id="length-check">At least 12 characters</li>
+                    <li id="lowercase-check">Contains lowercase (a-z)</li>
+                    <li id="uppercase-check">Contains uppercase (A-Z)</li>
+                    <li id="number-check">Contains numbers (0-9)</li>
+                    <li id="symbol-check">Contains symbols (!@#$)</li>
+                    <li id="common-check">Not a common password</li>
+                    <li id="pattern-check">Avoids easy patterns</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Email Database Tab -->
+        <div id="email-scanner" class="tab-content">
+            <h2>Breach Checker</h2>
+            <div class="input-area">
+                <input type="email" id="check-email-input" class="input-field" placeholder="[email to check...]">
+            </div>
+            <button id="check-email-btn" class="action-btn" disabled>Check Email</button>
+            <p id="email-feedback-text">Connecting to database...</p>
+            
+            <div class="results-area">
+                <h2>Breach Creator & Manager</h2>
+                 <div class="input-area">
+                    <input type="email" id="add-email-input" class="input-field" placeholder="[email to add...]">
+                </div>
+                <div class="breach-manager-controls">
+                    <label for="breach-count-input">Breaches to generate:</label>
+                    <input type="number" id="breach-count-input" class="input-field" value="3" min="1" max="10">
+                </div>
+                <button id="add-email-btn" class="action-btn" disabled>Add Email to Database</button>
+                <div id="breached-email-list">
+                    <p>Loading breached emails...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generator Modal -->
+    <div id="generator-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button id="close-modal-btn" class="close-btn" title="Close">&times;</button>
+            <h2>Password Generator</h2>
+            <div class="generator-toggle">
+                <button class="toggle-btn active" id="random-mode-btn">Random</button>
+                <button class="toggle-btn" id="diceware-mode-btn">Diceware (Anime)</button>
+            </div>
+            <div id="random-options">
+                <div class="option">
+                    <label for="length-slider">Length: <span id="length-display">16</span></label>
+                    <input type="range" id="length-slider" min="8" max="32" value="16">
+                </div>
+                <div class="option">
+                    <label><input type="checkbox" id="uppercase-check-gen" checked> Include Uppercase (A-Z)</label>
+                </div>
+                <div class="option">
+                    <label><input type="checkbox" id="numbers-check-gen" checked> Include Numbers (0-9)</label>
+                </div>
+                <div class="option">
+                    <label><input type="checkbox" id="symbols-check-gen" checked> Include Symbols (!@#$)</label>
+                </div>
+            </div>
+            <div id="diceware-options" style="display: none;">
+                <div class="option">
+                    <label for="word-count-slider">Number of Words: <span id="word-count-display">4</span></label>
+                    <input type="range" id="word-count-slider" min="3" max="7" value="4">
+                </div>
+                 <div class="option">
+                    <label for="separator-char">Separator:</label>
+                    <input type="text" id="separator-char" value="-" style="width: 50px; text-align: center; background: #333; border: 1px solid var(--text-color); color: var(--text-color); border-radius: 5px;">
+                </div>
+            </div>
+            <button id="generate-and-use-btn" class="action-btn">Generate & Use</button>
+        </div>
+    </div>
+    
+    <!-- High Alert Modal -->
+    <div id="alert-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button id="close-alert-btn" class="close-btn" title="Close">&times;</button>
+            <h2>High Alert: Breach Detected!</h2>
+            <div id="alert-modal-body"></div>
+        </div>
+    </div>
+    
+    <!-- Confirm Delete Modal -->
+    <div id="confirm-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="confirm-modal-title">Confirm Deletion</h2>
+            <div id="confirm-modal-body">
+                <p>Are you sure you want to delete this email from the database?</p>
+            </div>
+            <div class="modal-actions">
+                <button id="confirm-btn-no" class="modal-btn">Cancel</button>
+                <button id="confirm-btn-yes" class="modal-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, deleteDoc, query, where, getDocs, setLogLevel, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // --- DOM Element References ---
+        const passwordInput = document.getElementById('password-input');
+        const timeDisplay = document.getElementById('time-display');
+        const feedbackText = document.getElementById('feedback-text');
+        const analyzerCore = document.getElementById('analyzer-core');
+        const timeContainer = document.getElementById('time-container');
+        const toggleBtn = document.getElementById('toggle-visibility-btn');
+        const copyBtn = document.getElementById('copy-btn');
+        const eyeOpen = document.getElementById('eye-open');
+        const eyeClosed = document.getElementById('eye-closed');
+        const entropyFill = document.getElementById('entropy-fill');
+        
+        const tabs = document.querySelectorAll('.app-tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        // Email Database elements
+        const addEmailInput = document.getElementById('add-email-input');
+        const addEmailBtn = document.getElementById('add-email-btn');
+        const breachCountInput = document.getElementById('breach-count-input');
+        const breachedEmailList = document.getElementById('breached-email-list');
+        const checkEmailInput = document.getElementById('check-email-input');
+        const checkEmailBtn = document.getElementById('check-email-btn');
+        const emailFeedbackText = document.getElementById('email-feedback-text');
+
+        // Generator Modal elements
+        const generateBtn = document.getElementById('generate-btn');
+        const generatorModal = document.getElementById('generator-modal');
+        const closeModalBtn = document.getElementById('close-modal-btn');
+        const randomModeBtn = document.getElementById('random-mode-btn');
+        const dicewareModeBtn = document.getElementById('diceware-mode-btn');
+        const randomOptions = document.getElementById('random-options');
+        const dicewareOptions = document.getElementById('diceware-options');
+        const lengthSlider = document.getElementById('length-slider');
+        const lengthDisplay = document.getElementById('length-display');
+        const wordCountSlider = document.getElementById('word-count-slider');
+        const wordCountDisplay = document.getElementById('word-count-display');
+        const separatorChar = document.getElementById('separator-char');
+        const uppercaseCheck = document.getElementById('uppercase-check-gen');
+        const numbersCheck = document.getElementById('numbers-check-gen');
+        const symbolsCheck = document.getElementById('symbols-check-gen');
+        const generateAndUseBtn = document.getElementById('generate-and-use-btn');
+        
+        // Alert & Confirm Modals
+        const alertModal = document.getElementById('alert-modal');
+        const closeAlertBtn = document.getElementById('close-alert-btn');
+        const alertModalBody = document.getElementById('alert-modal-body');
+        const confirmModal = document.getElementById('confirm-modal');
+        const confirmBtnYes = document.getElementById('confirm-btn-yes');
+        const confirmBtnNo = document.getElementById('confirm-btn-no');
+
+        const checks = {
+            length: document.getElementById('length-check'),
+            lowercase: document.getElementById('lowercase-check'),
+            uppercase: document.getElementById('uppercase-check'),
+            number: document.getElementById('number-check'),
+            symbol: document.getElementById('symbol-check'),
+            common: document.getElementById('common-check'),
+            pattern: document.getElementById('pattern-check'),
+        };
+
+        const commonPasswords = new Set(["password","123456","123456789","qwerty","12345","12345678","111111","123123","dragon","iloveyou","admin","root","welcome"]);
+
+        // --- Firebase Setup ---
+        let db, auth, userId;
+        let breachedEmailsCol;
+        
+        async function setupFirebase() {
+            try {
+                // Your web app's Firebase configuration
+                const firebaseConfig = {
+                  apiKey: "AIzaSyB8ZpHzQdqz_9O9-TxHW9G2si5nlv6Ov9c",
+                  authDomain: "cybernetic-analyzer.firebaseapp.com",
+                  projectId: "cybernetic-analyzer",
+                  storageBucket: "cybernetic-analyzer.appspot.com",
+                  messagingSenderId: "558912632062",
+                  appId: "1:558912632062:web:736d7e292d52c20f89e1af",
+                  measurementId: "G-NXYQG9C4D0"
+                };
+
+                const app = initializeApp(firebaseConfig);
+                const analytics = getAnalytics(app);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('debug');
+
+                await enableIndexedDbPersistence(db);
+                console.log("Firebase persistence enabled.");
+
+                await signInAnonymously(auth);
+
+                userId = auth.currentUser.uid;
+                console.log("Authenticated with User ID:", userId);
+
+                const collectionPath = `users/${userId}/breached_emails_v5`;
+                breachedEmailsCol = collection(db, collectionPath);
+                
+                onSnapshot(breachedEmailsCol, (snapshot) => {
+                    displayBreachedEmails(snapshot.docs);
+                });
+                
+                addEmailBtn.disabled = false;
+                checkEmailBtn.disabled = false;
+                emailFeedbackText.textContent = "Database connected. Ready for use.";
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                let userMessage = "Database connection failed.";
+                if (error.code === 'auth/configuration-not-found') {
+                    userMessage = "DB Error: Please enable Anonymous Sign-In in your Firebase project's Authentication settings.";
+                } else if (error.code == 'failed-precondition') {
+                    userMessage = "Offline mode disabled (multiple tabs open).";
+                } else if (error.code == 'unimplemented') {
+                    userMessage = "Offline mode not supported by browser.";
+                }
+                emailFeedbackText.innerHTML = `<span style="color:var(--weak-glow);">${userMessage}</span>`;
+            }
+        }
+        
+        // --- Email Database Logic ---
+        function displayBreachedEmails(docs) {
+            if (!docs || docs.length === 0) {
+                breachedEmailList.innerHTML = '<p>No emails in the breach list.</p>';
+                return;
+            }
+            breachedEmailList.innerHTML = '';
+            docs.forEach(doc => {
+                const emailData = doc.data();
+                const item = document.createElement('div');
+                item.className = 'breached-email-item';
+                item.innerHTML = `<span>${emailData.email}</span>`;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-email-btn';
+                deleteBtn.textContent = 'X';
+                deleteBtn.title = `Delete ${emailData.email}`;
+                deleteBtn.onclick = () => confirmDeleteEmail(doc.id, emailData.email);
+                
+                item.appendChild(deleteBtn);
+                breachedEmailList.appendChild(item);
+            });
+        }
+
+        async function addEmail() {
+            const email = addEmailInput.value.trim().toLowerCase();
+            const breachCount = parseInt(breachCountInput.value, 10);
+            if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+                emailFeedbackText.textContent = "Please enter a valid email address."; return;
+            }
+            if (isNaN(breachCount) || breachCount < 1) {
+                emailFeedbackText.textContent = "Please enter a valid number of breaches."; return;
+            }
+
+            addEmailBtn.disabled = true;
+            try {
+                const breaches = generateFakeBreaches(breachCount);
+                await addDoc(breachedEmailsCol, { email: email, breaches: breaches });
+                addEmailInput.value = '';
+            } catch (error) {
+                console.error("Error adding email:", error);
+                emailFeedbackText.textContent = "Failed to add email to the database.";
+            } finally {
+                addEmailBtn.disabled = false;
+            }
+        }
+        
+        function generateFakeBreaches(count) {
+            const platforms = ["Facebook", "Old MySpace Account", "AnimeFanForums", "Shady Streaming Site", "Neopets", "Club Penguin", "LinkedIn", "That one forum you forgot about", "Hanime.tv", "Your Mom's PC"];
+            const dataTypes = ["Username", "Password", "Email Address", "Phone Number", "Credit Card Details", "Private DMs", "Search History", "Your secret anime list"];
+            const years = ["2013", "2015", "2018", "2020", "2021", "2022"];
+            const generatedBreaches = [];
+            for (let i = 0; i < count; i++) {
+                generatedBreaches.push({
+                    platform: platforms[Math.floor(Math.random() * platforms.length)],
+                    dataType: dataTypes[Math.floor(Math.random() * dataTypes.length)],
+                    year: years[Math.floor(Math.random() * years.length)]
+                });
+            }
+            return generatedBreaches;
+        }
+
+        function confirmDeleteEmail(docId, email) {
+            confirmModal.style.display = 'flex';
+            document.getElementById('confirm-modal-body').innerHTML = `<p>Are you sure you want to delete <strong>${email}</strong> from the database?</p>`;
+            
+            confirmBtnYes.onclick = async () => {
+                try {
+                    await deleteDoc(doc(db, breachedEmailsCol.path, docId));
+                } catch (error) {
+                    console.error("Error deleting email:", error);
+                    emailFeedbackText.textContent = "Failed to delete email.";
+                } finally {
+                    confirmModal.style.display = 'none';
+                }
+            };
+        }
+
+        async function checkEmail() {
+            const emailToCheck = checkEmailInput.value.trim().toLowerCase();
+            if (!emailToCheck) {
+                emailFeedbackText.textContent = "Please enter an email to check.";
+                return;
+            }
+            checkEmailBtn.disabled = true;
+            emailFeedbackText.textContent = `Checking for ${emailToCheck}...`;
+            try {
+                const q = query(breachedEmailsCol, where("email", "==", emailToCheck));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    const doc = querySnapshot.docs[0];
+                    const breachData = doc.data();
+                    showAlertModal(breachData.email, breachData.breaches);
+                    emailFeedbackText.textContent = `Check complete. See alert for details.`;
+                } else {
+                    emailFeedbackText.style.color = 'var(--strong-glow)';
+                    emailFeedbackText.textContent = `Good news! ${emailToCheck} is not in your breach list.`;
+                }
+            } catch (error) {
+                console.error("Error checking email:", error);
+                emailFeedbackText.textContent = "Error checking the database.";
+            } finally {
+                checkEmailBtn.disabled = false;
+            }
+        }
+        
+        function showAlertModal(email, breaches) {
+            alertModalBody.innerHTML = `<p>Breaches found for: <strong>${email}</strong></p>`;
+            if (breaches && breaches.length > 0) {
+                breaches.forEach(b => {
+                    const item = document.createElement('div');
+                    item.className = 'breach-item';
+                    item.innerHTML = `Your <span class="data-type">${b.dataType}</span> was found in the <strong>${b.platform}</strong> data breach from ${b.year}.`;
+                    alertModalBody.appendChild(item);
+                });
+            } else {
+                alertModalBody.innerHTML += `<p>No specific breach details were found.</p>`;
+            }
+            alertModal.style.display = 'flex';
+        }
+
+        // --- Event Listeners ---
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                const content = document.getElementById(tab.dataset.tab);
+                if (content) content.classList.add('active');
+            });
+        });
+        
+        addEmailBtn.addEventListener('click', addEmail);
+        checkEmailBtn.addEventListener('click', checkEmail);
+        passwordInput.addEventListener('input', handlePasswordInput);
+        toggleBtn.addEventListener('click', togglePasswordVisibility);
+        copyBtn.addEventListener('click', copyPassword);
+        generateBtn.addEventListener('click', () => { generatorModal.style.display = 'flex'; });
+        closeModalBtn.addEventListener('click', () => { generatorModal.style.display = 'none'; });
+        closeAlertBtn.addEventListener('click', () => { alertModal.style.display = 'none'; });
+        confirmBtnNo.addEventListener('click', () => { confirmModal.style.display = 'none'; });
+        window.addEventListener('click', (e) => { 
+            if (e.target === generatorModal) generatorModal.style.display = 'none';
+            if (e.target === alertModal) alertModal.style.display = 'none';
+            if (e.target === confirmModal) confirmModal.style.display = 'none';
+        });
+        lengthSlider.addEventListener('input', (e) => { lengthDisplay.textContent = e.target.value; });
+        wordCountSlider.addEventListener('input', (e) => { wordCountDisplay.textContent = e.target.value; });
+        randomModeBtn.addEventListener('click', () => switchGeneratorMode('random'));
+        dicewareModeBtn.addEventListener('click', () => switchGeneratorMode('diceware'));
+        generateAndUseBtn.addEventListener('click', handleGeneratePassword);
+        
+        // --- All other functions (password analysis, generator, etc.) remain here ---
+        
+        function handlePasswordInput() {
+            const password = passwordInput.value;
+            if (password.length === 0) { resetUI(); return; }
+            const validation = {
+                length: password.length >= 12,
+                hasLowercase: /[a-z]/.test(password),
+                hasUppercase: /[A-Z]/.test(password),
+                hasNumber: /[0-9]/.test(password),
+                hasSymbol: /[^A-Za-z0-9]/.test(password),
+                notCommon: !commonPasswords.has(password.toLowerCase()),
+                noPattern: !/(\w)\1{2,}/.test(password) && !isSequential(password)
+            };
+            let characterPool = 0;
+            if (validation.hasLowercase) characterPool += 26;
+            if (validation.hasUppercase) characterPool += 26;
+            if (validation.hasNumber) characterPool += 10;
+            if (validation.hasSymbol) characterPool += 32;
+            let timeToCrackText = "Instantly", strength = 0, feedback = "";
+            let entropy = 0;
+            if (!validation.notCommon) {
+                strength = 0; feedback = "This is a very common password. Avoid it.";
+            } else if (!validation.noPattern) {
+                strength = 1; feedback = "Warning: Avoid using repeated or sequential characters.";
+            } else if (characterPool > 0 && password.length > 0) {
+                entropy = password.length * Math.log2(characterPool);
+                const combinations = Math.pow(2, entropy);
+                const guessesPerSecond = 1e10; 
+                const secondsToCrack = combinations / guessesPerSecond;
+                timeToCrackText = formatTime(secondsToCrack);
+                if (entropy < 40) { strength = 1; feedback = "Weak. Try adding more character types and length."; }
+                else if (entropy < 60) { strength = 2; feedback = "Fair. Could be stronger with more length or symbols."; }
+                else if (entropy < 80) { strength = 3; feedback = "Strong password. Well done."; }
+                else { strength = 4; feedback = "Excellent! This is a very secure password."; }
+            } else {
+                 strength = 1; feedback = "Start typing to see analysis.";
+            }
+            updateChecklistUI(validation);
+            updateStrengthUI(strength, timeToCrackText, feedback, entropy);
+            copyBtn.style.display = strength >= 3 ? 'inline-block' : 'none';
+        }
+        function updateChecklistUI(validation) {
+            for (const key in checks) {
+                let checkPassed = false;
+                if (key === 'common') checkPassed = validation.notCommon;
+                else if (key === 'length') checkPassed = validation.length;
+                else if (key === 'lowercase') checkPassed = validation.hasLowercase;
+                else if (key === 'uppercase') checkPassed = validation.hasUppercase;
+                else if (key === 'number') checkPassed = validation.hasNumber;
+                else if (key === 'symbol') checkPassed = validation.hasSymbol;
+                else if (key === 'pattern') checkPassed = validation.noPattern;
+                checks[key].classList.toggle('checked', checkPassed);
+            }
+        }
+        function updateStrengthUI(strength, timeText, feedback, entropy) {
+            timeDisplay.textContent = timeText;
+            feedbackText.textContent = feedback;
+            
+            const maxEntropy = 128; // A reasonable upper limit for visualization
+            const entropyPercent = Math.min(entropy / maxEntropy, 1);
+            const circumference = 2 * Math.PI * 45;
+            entropyFill.style.strokeDashoffset = circumference * (1 - entropyPercent);
+
+            let glowColor, borderColor, matrixColor;
+            switch (strength) {
+                case 1: glowColor = borderColor = 'var(--weak-glow)'; matrixColor = 'hue-rotate(0deg)'; break;
+                case 2: glowColor = borderColor = 'orange'; matrixColor = 'hue-rotate(280deg)'; break;
+                case 3: glowColor = borderColor = 'var(--primary-glow)'; matrixColor = 'hue-rotate(180deg)'; break;
+                case 4: glowColor = borderColor = 'var(--strong-glow)'; matrixColor = 'hue-rotate(120deg)'; break;
+                default: glowColor = borderColor = 'var(--weak-glow)'; matrixColor = 'hue-rotate(0deg)'; break;
+            }
+            analyzerCore.style.borderColor = borderColor;
+            analyzerCore.style.boxShadow = `0 0 15px ${borderColor}, 0 0 30px ${borderColor} inset`;
+            timeContainer.style.borderColor = borderColor;
+            timeDisplay.style.color = glowColor;
+            timeDisplay.style.textShadow = `0 0 8px ${glowColor}`;
+            feedbackText.style.color = glowColor;
+            entropyFill.style.stroke = glowColor;
+            document.getElementById('matrix-bg').style.filter = matrixColor;
+        }
+        function resetUI() {
+            Object.values(checks).forEach(el => { el.classList.remove('checked'); el.style.color = ''; });
+            timeDisplay.textContent = "---";
+            feedbackText.textContent = "Awaiting input...";
+            copyBtn.style.display = 'none';
+            updateStrengthUI(3, '---', 'Awaiting input...', 0);
+        }
+        function togglePasswordVisibility() {
+            const isVisible = passwordInput.type === 'text';
+            passwordInput.type = isVisible ? 'password' : 'text';
+            eyeOpen.style.display = isVisible ? 'block' : 'none';
+            eyeClosed.style.display = isVisible ? 'none' : 'block';
+        }
+        function copyPassword() {
+            const el = document.createElement('textarea');
+            el.value = passwordInput.value;
+            document.body.appendChild(el);
+            el.select();
+            try {
+                document.execCommand('copy');
+                feedbackText.textContent = "Password copied to clipboard!";
+                setTimeout(() => handlePasswordInput(), 2000);
+            } catch (err) {
+                feedbackText.textContent = "Failed to copy password.";
+            }
+            document.body.removeChild(el);
+        }
+        function formatTime(seconds) {
+            if (seconds < 1) return "Instantly";
+            if (seconds < 60) return `${Math.ceil(seconds)} seconds`;
+            if (seconds < 3600) return `${Math.ceil(seconds / 60)} minutes`;
+            if (seconds < 86400) return `${Math.ceil(seconds / 3600)} hours`;
+            if (seconds < 604800) return `${Math.ceil(seconds / 86400)} days`;
+            if (seconds < 2.628e+6) return `${Math.ceil(seconds / 604800)} weeks`;
+            if (seconds < 3.154e+7) return `${Math.ceil(seconds / 2.628e+6)} months`;
+            const years = seconds / 3.154e+7;
+            if (years < 1000) return `${Math.round(years)} years`;
+            if (years < 1e6) return `${Math.round(years / 1000)} thousand years`;
+            if (years < 1e9) return `${Math.round(years / 1e6)} million years`;
+            return "Eternity";
+        }
+        function isSequential(str) {
+            for (let i = 0; i < str.length - 2; i++) {
+                const char1 = str.charCodeAt(i);
+                const char2 = str.charCodeAt(i + 1);
+                const char3 = str.charCodeAt(i + 2);
+                if (char1 + 1 === char2 && char2 + 1 === char3) return true;
+            }
+            return false;
+        }
+        function switchGeneratorMode(mode) {
+            if (mode === 'random') {
+                randomModeBtn.classList.add('active');
+                dicewareModeBtn.classList.remove('active');
+                randomOptions.style.display = 'block';
+                dicewareOptions.style.display = 'none';
+            } else {
+                dicewareModeBtn.classList.add('active');
+                randomModeBtn.classList.remove('active');
+                dicewareOptions.style.display = 'block';
+                randomOptions.style.display = 'none';
+            }
+        }
+        function handleGeneratePassword() {
+            let password = '';
+            if (randomModeBtn.classList.contains('active')) {
+                password = generateRandomPassword();
+            } else {
+                password = generateDicewarePassword();
+            }
+            typePassword(password);
+            generatorModal.style.display = 'none';
+        }
+        function typePassword(password) {
+            let i = 0;
+            passwordInput.value = '';
+            passwordInput.disabled = true;
+            const interval = setInterval(() => {
+                if (i < password.length) {
+                    passwordInput.value += password.charAt(i);
+                    handlePasswordInput();
+                    i++;
+                } else {
+                    clearInterval(interval);
+                    passwordInput.disabled = false;
+                    passwordInput.focus();
+                }
+            }, 50);
+        }
+        function generateRandomPassword() {
+            const length = parseInt(lengthSlider.value, 10);
+            const includeUppercase = uppercaseCheck.checked;
+            const includeNumbers = numbersCheck.checked;
+            const includeSymbols = symbolsCheck.checked;
+            const lowercaseChars = 'abcdefghijklmnopqrstuvwxyz', uppercaseChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', numberChars = '0123456789', symbolChars = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+            let charPool = lowercaseChars, guaranteedChars = [];
+            if (includeUppercase) { charPool += uppercaseChars; guaranteedChars.push(uppercaseChars[Math.floor(Math.random() * uppercaseChars.length)]); }
+            if (includeNumbers) { charPool += numberChars; guaranteedChars.push(numberChars[Math.floor(Math.random() * numberChars.length)]); }
+            if (includeSymbols) { charPool += symbolChars; guaranteedChars.push(symbolChars[Math.floor(Math.random() * symbolChars.length)]); }
+            let password = guaranteedChars.join('');
+            const remainingLength = length - password.length;
+            for (let i = 0; i < remainingLength; i++) {
+                const randomIndex = Math.floor(Math.random() * charPool.length);
+                password += charPool[randomIndex];
+            }
+            return password.split('').sort(() => 0.5 - Math.random()).join('');
+        }
+        function generateDicewarePassword() {
+            const dicewareList = ["Kamehameha","Rasengan","Getsuga-Tensho","Spirit-Bomb","Final-Flash","Chidori","Amaterasu","Tsukuyomi","Susanoo","Shinra-Tensei","Bansho-Tenin","Gomu-Gomu-no-Pistol","Gear-Second","Oni-Giri","Bankai","Hakai","Kaio-ken","Mangekyo","Sharingan","Rinnegan","Byakugan","Almighty-Push","United-States-of-Smash","Delaware-Smash","Detroit-Smash","One-For-All","All-For-One","Explosion","Hardening","Zero-Gravity","Tailed-Beast-Bomb","Flying-Raijin","Shadow-Clone","Reanimation-Jutsu","Eighty-Gods-Vacuum-Attack","Dragon-of-the-Darkness-Flame","Jajanken","Godspeed","Dragon-Slayer-Magic","Star-Dress","Requip","Ice-Make","Water-Nebula","Excalibur","Gate-of-Babylon","Unlimited-Blade-Works","Gae-Bolg","Rho-Aias","Hiken","Dai-Enkai-Entei","Room","Shambles","Gamma-Knife","Red-Hawk","Gum-Gum-Gatling","King-Kong-Gun","Conquerors-Haki","Armament-Haki","Observation-Haki","Dragon-Twister","Tatsumaki-Senpukyaku","Shoryuken","Hadoken","Metsu-Hadoken","Serious-Punch","Consecutive-Normal-Punches","Death-Ball","Special-Beam-Cannon","Destructo-Disc","Solar-Flare","Galick-Gun","Big-Bang-Attack","Super-Saiyan","Ultra-Instinct","Fusion-Dance","Potara-Fusion","Hollow-Purple","Domain-Expansion","Black-Flash","Cursed-Technique","Reverse-Cursed-Technique","Limitless","Six-Eyes","Blood-Demon-Art","Sun-Breathing","Water-Breathing","Thunder-Breathing","Beast-Breathing","Hinokami-Kagura","Fullmetal-Alchemist","Alchemy","Human-Transmutation","Geass","Stand-Arrow","The-World","Star-Platinum","Gold-Experience-Requiem","King-Crimson","Killer-Queen","Crazy-Diamond","Nen","Titan-Shifter","Ackerman-Power","Luffy","Goku","Naruto","Ichigo","Saitama","Eren-Yeager","Levi-Ackerman","Monkey-D-Dragon","Zoro","Sanji","Natsu-Dragneel","Gray-Fullbuster","Erza-Scarlet","Light-Yagami","L-Lawliet","Vegeta","Gohan","Piccolo","Sasuke-Uchiha","Kakashi-Hatake","Itachi-Uchiha","Madara-Uchiha","All-Might","Deku","Bakugo","Todoroki","Gojo-Satoru","Sukuna","Yuji-Itadori","Megumi-Fushiguro","Nobara-Kugisaki","Tanjiro-Kamado","Nezuko-Kamado","Zenitsu-Agatsuma","Inosuke-Hashibira","Giyu-Tomioka","Edward-Elric","Alphonse-Elric","Roy-Mustang","Lelouch-Lamperouge","Suzaku-Kururugi","Jotaro-Kujo","Dio-Brando","Giorno-Giovanna","Gon-Freecss","Killua-Zoldyck","Hisoka-Morow","Meruem"];
+            const wordCount = parseInt(wordCountSlider.value, 10);
+            const separator = separatorChar.value || '-';
+            let words = [];
+            for (let i = 0; i < wordCount; i++) {
+                const randomIndex = Math.floor(Math.random() * dicewareList.length);
+                let word = dicewareList[randomIndex];
+                // 50% chance to capitalize the word
+                if (Math.random() > 0.5) {
+                    word = word.charAt(0).toUpperCase() + word.slice(1);
+                }
+                words.push(word);
+            }
+            // Add a random number to one of the words
+            const wordToChangeIndex = Math.floor(Math.random() * words.length);
+            words[wordToChangeIndex] += Math.floor(Math.random() * 100);
+
+            return words.join(separator);
+        }
+
+        // --- Matrix Background Animation ---
+        const canvas = document.getElementById('matrix-bg');
+        const ctx = canvas.getContext('2d');
+        let matrixInterval;
+
+        function startMatrix() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            const characters = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッンABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const fontSize = 16;
+            const columns = canvas.width / fontSize;
+            const drops = Array.from({ length: columns }).fill(1);
+            const fontFamily = getComputedStyle(document.documentElement).getPropertyValue('--font-family').trim();
+            function draw() {
+                ctx.fillStyle = 'rgba(13, 12, 29, 0.05)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'var(--strong-glow)';
+                ctx.font = `${fontSize}px ${fontFamily}`;
+                for (let i = 0; i < drops.length; i++) {
+                    const text = characters.charAt(Math.floor(Math.random() * characters.length));
+                    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                    drops[i]++;
+                }
+            }
+            if(matrixInterval) clearInterval(matrixInterval);
+            matrixInterval = setInterval(draw, 40);
+        }
+        
+        window.addEventListener('resize', startMatrix);
+        
+        // --- Initial call ---
+        setupFirebase();
+        resetUI();
+        startMatrix();
+    </script>
+</body>
+</html>
